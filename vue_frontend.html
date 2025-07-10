@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>训练进程监视器</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .main-content {
+            padding: 30px;
+        }
+        
+        .script-section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .script-input {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: vertical;
+            transition: border-color 0.3s ease;
+        }
+        
+        .script-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+        }
+        
+        .btn-success:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(86, 171, 47, 0.3);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 65, 108, 0.3);
+        }
+        
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        
+        .processes-section {
+            margin-top: 40px;
+        }
+        
+        .process-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+        
+        .process-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .process-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .process-id {
+            font-weight: 600;
+            color: #333;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status.running {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status.stopped {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+        
+        .process-info {
+            margin-bottom: 15px;
+        }
+        
+        .process-info p {
+            margin-bottom: 5px;
+            color: #666;
+        }
+        
+        .process-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .logs-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e1e5e9;
+        }
+        
+        .logs-container {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        
+        .log-timestamp {
+            color: #888;
+            margin-right: 10px;
+        }
+        
+        .log-message {
+            color: #00ff00;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .empty-state h3 {
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .connection-status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .connection-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .template-section {
+            margin-bottom: 20px;
+        }
+        
+        .template-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn-template {
+            padding: 8px 16px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-template:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="connection-status" :class="{ connected: socketConnected, disconnected: !socketConnected }">
+            {{ socketConnected ? '已连接' : '未连接' }}
+        </div>
+        
+        <div class="container">
+            <div class="header">
+                <h1>🚀 训练进程监视器</h1>
+                <p>输入Bash训练命令，实时监控执行过程</p>
+            </div>
+            
+            <div class="main-content">
+                <!-- 脚本输入区域 -->
+                <div class="script-section">
+                    <h2 class="section-title">📝 Bash训练命令</h2>
+                    
+                    <!-- 模板按钮 -->
+                    <div class="template-section">
+                        <div class="template-buttons">
+                            <button class="btn-template" @click="loadTemplate('simple')">简单训练</button>
+                            <button class="btn-template" @click="loadTemplate('progress')">进度条示例</button>
+                            <button class="btn-template" @click="loadTemplate('error')">错误示例</button>
+                        </div>
+                    </div>
+                    
+                    <textarea 
+                        v-model="scriptContent" 
+                        class="script-input" 
+                        placeholder="在此输入Bash训练命令...&#10;&#10;示例：&#10;python train.py --epochs 10&#10;&#10;或：&#10;./run_training.sh&#10;&#10;或：&#10;python train.py --batch-size 32 --lr 0.001"
+                    ></textarea>
+                    
+                    <div class="controls">
+                        <button 
+                            class="btn btn-primary" 
+                            @click="startTraining"
+                            :disabled="!scriptContent.trim() || isStarting"
+                        >
+                            {{ isStarting ? '启动中...' : '🚀 开始训练' }}
+                        </button>
+                        <button class="btn btn-success" @click="refreshProcesses">
+                            🔄 刷新进程
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 进程列表 -->
+                <div class="processes-section">
+                    <h2 class="section-title">📊 训练进程</h2>
+                    
+                    <div v-if="processes.length === 0" class="empty-state">
+                        <h3>暂无训练进程</h3>
+                        <p>输入Bash训练命令并点击"开始训练"来启动第一个进程</p>
+                    </div>
+                    
+                    <div v-for="process in processes" :key="process.process_id" class="process-card">
+                        <div class="process-header">
+                            <div class="process-id">{{ process.process_id }}</div>
+                            <div class="status" :class="process.status">
+                                {{ getStatusText(process.status) }}
+                            </div>
+                        </div>
+                        
+                        <div class="process-info">
+                            <p v-if="process.start_time">
+                                <strong>开始时间:</strong> {{ formatTime(process.start_time) }}
+                            </p>
+                            <p v-if="process.end_time">
+                                <strong>结束时间:</strong> {{ formatTime(process.end_time) }}
+                            </p>
+                            <p><strong>日志条数:</strong> {{ process.logs_count }}</p>
+                        </div>
+                        
+                        <div class="process-actions">
+                            <button 
+                                v-if="process.status === 'running'" 
+                                class="btn btn-danger btn-sm"
+                                @click="stopTraining(process.process_id)"
+                            >
+                                ⏹️ 停止
+                            </button>
+                            <button 
+                                class="btn btn-primary btn-sm"
+                                @click="toggleLogs(process.process_id)"
+                            >
+                                {{ showLogs[process.process_id] ? '隐藏日志' : '📋 查看日志' }}
+                            </button>
+                            <button 
+                                v-if="process.status !== 'running'" 
+                                class="btn btn-danger btn-sm"
+                                @click="deleteProcess(process.process_id)"
+                            >
+                                🗑️ 删除
+                            </button>
+                        </div>
+                        
+                        <!-- 日志区域 -->
+                        <div v-if="showLogs[process.process_id]" class="logs-section">
+                            <div class="logs-container" :ref="'logs-' + process.process_id">
+                                <div v-if="processLogs[process.process_id] && processLogs[process.process_id].length > 0">
+                                    <div 
+                                        v-for="log in processLogs[process.process_id]" 
+                                        :key="log.timestamp"
+                                        class="log-entry"
+                                    >
+                                        <span class="log-timestamp">{{ formatLogTime(log.timestamp) }}</span>
+                                        <span class="log-message">{{ log.message }}</span>
+                                    </div>
+                                </div>
+                                <div v-else class="log-entry">
+                                    <span class="log-message">暂无日志...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    scriptContent: '',
+                    processes: [],
+                    processLogs: {},
+                    showLogs: {},
+                    isStarting: false,
+                    socket: null,
+                    socketConnected: false,
+                    templates: {
+                        simple: `python train.py --epochs 5`,
+                        progress: `python train.py --epochs 3 --steps-per-epoch 20`,
+                        error: `python train.py --epochs 10 --error-test`
+                    }
+                }
+            },
+            
+            mounted() {
+                this.initSocket();
+                this.refreshProcesses();
+            },
+            
+            methods: {
+                initSocket() {
+                    this.socket = io('http://localhost:5050');
+                    
+                    this.socket.on('connect', () => {
+                        this.socketConnected = true;
+                        console.log('WebSocket连接成功');
+                    });
+                    
+                    this.socket.on('disconnect', () => {
+                        this.socketConnected = false;
+                        console.log('WebSocket连接断开');
+                    });
+                    
+                    this.socket.on('training_log', (data) => {
+                        const processId = data.process_id;
+                        if (!this.processLogs[processId]) {
+                            this.processLogs[processId] = [];
+                        }
+                        this.processLogs[processId].push(data.log);
+                        
+                        // 自动滚动到底部
+                        this.$nextTick(() => {
+                            const logContainer = this.$refs['logs-' + processId];
+                            if (logContainer && logContainer[0]) {
+                                logContainer[0].scrollTop = logContainer[0].scrollHeight;
+                            }
+                        });
+                    });
+                    
+                    this.socket.on('training_status', (data) => {
+                        const processIndex = this.processes.findIndex(p => p.process_id === data.process_id);
+                        if (processIndex !== -1) {
+                            this.processes[processIndex].status = data.status;
+                            this.processes[processIndex].end_time = data.end_time;
+                        }
+                    });
+                },
+                
+                loadTemplate(templateName) {
+                    this.scriptContent = this.templates[templateName];
+                },
+                
+                async startTraining() {
+                    if (!this.scriptContent.trim()) {
+                        alert('请输入Bash训练命令');
+                        return;
+                    }
+                    
+                    this.isStarting = true;
+                    
+                    try {
+                        const response = await axios.post('http://localhost:5050/api/start_training', {
+                            script: this.scriptContent
+                        });
+                        
+                        if (response.data.success) {
+                            alert('训练开始成功！');
+                            this.refreshProcesses();
+                        } else {
+                            alert('启动失败: ' + response.data.error);
+                        }
+                    } catch (error) {
+                        alert('启动失败: ' + (error.response?.data?.error || error.message));
+                    } finally {
+                        this.isStarting = false;
+                    }
+                },
+                
+                async stopTraining(processId) {
+                    if (!confirm('确定要停止这个训练进程吗？')) {
+                        return;
+                    }
+                    
+                    try {
+                        const response = await axios.post('http://localhost:5050/api/stop_training', {
+                            process_id: processId
+                        });
+                        
+                        if (response.data.success) {
+                            alert('训练已停止');
+                            this.refreshProcesses();
+                        } else {
+                            alert('停止失败: ' + response.data.error);
+                        }
+                    } catch (error) {
+                        alert('停止失败: ' + (error.response?.data?.error || error.message));
+                    }
+                },
+                
+                async deleteProcess(processId) {
+                    if (!confirm('确定要删除这个进程记录吗？')) {
+                        return;
+                    }
+                    
+                    try {
+                        const response = await axios.delete(`http://localhost:5050/api/delete_process/${processId}`);
+                        
+                        if (response.data.success) {
+                            this.refreshProcesses();
+                            delete this.processLogs[processId];
+                            delete this.showLogs[processId];
+                        } else {
+                            alert('删除失败: ' + response.data.error);
+                        }
+                    } catch (error) {
+                        alert('删除失败: ' + (error.response?.data?.error || error.message));
+                    }
+                },
+                
+                async refreshProcesses() {
+                    try {
+                        const response = await axios.get('http://localhost:5050/api/get_processes');
+                        
+                        if (response.data.success) {
+                            this.processes = response.data.processes.sort((a, b) => 
+                                new Date(b.start_time || 0) - new Date(a.start_time || 0)
+                            );
+                        }
+                    } catch (error) {
+                        console.error('获取进程列表失败:', error);
+                    }
+                },
+                
+                async toggleLogs(processId) {
+                    if (this.showLogs[processId]) {
+                        this.showLogs[processId] = false;
+                    } else {
+                        this.showLogs[processId] = true;
+                        
+                        // 如果还没有加载日志，则加载
+                        if (!this.processLogs[processId]) {
+                            try {
+                                const response = await axios.get(`http://localhost:5050/api/get_logs/${processId}`);
+                                
+                                if (response.data.success) {
+                                    this.processLogs[processId] = response.data.logs;
+                                }
+                            } catch (error) {
+                                console.error('获取日志失败:', error);
+                            }
+                        }
+                        
+                        // 滚动到底部
+                        this.$nextTick(() => {
+                            const logContainer = this.$refs['logs-' + processId];
+                            if (logContainer && logContainer[0]) {
+                                logContainer[0].scrollTop = logContainer[0].scrollHeight;
+                            }
+                        });
+                    }
+                },
+                
+                formatTime(timeString) {
+                    if (!timeString) return '';
+                    const date = new Date(timeString);
+                    return date.toLocaleString('zh-CN');
+                },
+                
+                formatLogTime(timeString) {
+                    if (!timeString) return '';
+                    const date = new Date(timeString);
+                    return date.toLocaleTimeString('zh-CN');
+                },
+                
+                getStatusText(status) {
+                    const statusMap = {
+                        'pending': '等待中',
+                        'running': '运行中',
+                        'completed': '已完成',
+                        'failed': '失败',
+                        'stopped': '已停止'
+                    };
+                    return statusMap[status] || status;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
